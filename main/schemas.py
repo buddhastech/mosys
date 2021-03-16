@@ -20,7 +20,8 @@ class TypeOfUsersSchema(marshmallow.Schema):
 
     class Meta:
         fields = (
-            'nombre_del_tipo',
+            'tipo_de_usuario_pkey',
+            'nombre_del_tipo'
         )
 
 type_of_user_schema = TypeOfUsersSchema()
