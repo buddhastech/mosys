@@ -30,6 +30,7 @@ class Users(db.Model):
         db.ForeignKey('tipos_de_usuario.tipo_de_usuario_pkey')
     )
 
+
 class TypeOfUsers(db.Model):
 
     __tablename__ = "tipos_de_usuario"

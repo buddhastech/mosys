@@ -1,14 +1,18 @@
 from flask import Flask, request, jsonify, request
 from flask_marshmallow import Marshmallow
 from flask_sqlalchemy import SQLAlchemy
+import simplejson
 
 from config_files.database_flask_config import configDatabase
 
 application = Flask(__name__)
+application.json_encoder = MyJSONEncoder
 configDatabase(application)
 
 marshmallow = Marshmallow(application)
 db = SQLAlchemy(application)
+
+#tipos de usuario
 
 @application.route('/tiposUsuario/')
 def get_type_of_users():
@@ -16,7 +20,7 @@ def get_type_of_users():
     import schemas
     import models
 
-    all_type_of_users = models.TypeOfUsers.query.all()
+    all_type_of_users = db.session.query(models.TypeOfUsers).all()
     schema_type_of_users = schemas.type_of_users_schema.dump(all_type_of_users)
 
     return jsonify(schema_type_of_users)
@@ -26,22 +30,26 @@ def get_type_of_user(tipo):
 
     import schemas
     import models
+    
     response = None
 
     try:
-        type_of_user = models.TypeOfUsers.query.filter_by(nombre_del_tipo=tipo).first()
+        type_of_user = db.session.query(models.TypeOfUsers)\
+        .filter_by(nombre_del_tipo=tipo).first()
         
         if type_of_user:
             response = schemas.type_of_user_schema.dump(type_of_user)
         else:
-            response = {"message": "No se ha encontrado ningún tipo de usuario"}
+            response = {
+            "message": "No se ha encontrado ningún tipo de usuario"
+        }
     except:
         response = {"message": "Ha ocurrido un problema"}
 
     return jsonify(response)
 
 @application.route('/tiposUsuario/', methods=['POST'])
-def regist_type_of_user():
+def create_type_of_user():
 
     import models
     response = None
@@ -75,13 +83,12 @@ def update_type_of_user(id):
     
         else:
             response = {"message": "No se ha encontrado tipo de usuario"}
-    except Exception as error:
-        print(error)
+    except:
         response = {"message": "Ha ocurrido un problema"}
 
     finally:
         return jsonify(response)
-        
+
 @application.route('/tiposUsuario/<id>', methods=['DELETE'])
 def delete_type_of_user(id):
     
@@ -105,35 +112,108 @@ def delete_type_of_user(id):
 
     finally: 
         return jsonify(response)
-
-
-
-
+        
+#usuarios
+        
 @application.route('/usuarios/')
 def get_users():
 
     import schemas
     import models
 
-    all_users = models.Users.query.all()
+    response = None
+    
+    try:
+        all_users = db.session.query(models.Users, models.TypeOfUsers)\
+        .join(
+            models.Users, 
+            models.Users.tipo_de_usuario_foreign==models.TypeOfUsers.tipo_de_usuario_pkey
+        )
+    
+        if all_users:
+            users_dict = {}
+            counter = 0
 
-    return jsonify(schemas.users_schema.dump(all_users))
+            for user in all_users:
+        
+                counter += 1
+                users_dict['user {}'.format(counter)] = schemas.users_schema.dump(user)
+        
+            response = users_dict
+        else:
+            response = {
+                "message": "No existen usuarios"
+            }
+    except:
+        response = {
+            "message": "Ha ocurrido un problema"
+        }
+    finally:
+        return jsonify(response)
 
 @application.route('/usuarios/<dni>')
 def get_user(dni):
 
     import models
     import schemas
-    
-    try:
-        user = models.Users.query.filter_by(usuario_cedula_pkey=dni).first()
-        if user:
-            return jsonify(schemas.user_schema.dump(user))
 
-        return jsonify({"message":"Usuario no encontrado"})
-    
+    response = None
+
+    try:
+
+        search_user = db.session.query(models.Users, models.TypeOfUsers)\
+        .filter_by(usuario_cedula_pkey=dni)\
+        .join(
+            models.Users, 
+            models.Users.tipo_de_usuario_foreign==models.TypeOfUsers.tipo_de_usuario_pkey
+        ).first()
+
+        if search_user:
+            response = schemas.users_schema.dump(search_user)
+        else:
+            response = {
+                "message": "No se ha encontrado el usuario"
+            }
     except:
-        return jsonify({"message": "Ha ocurrido un problema"})
+        response = {
+            "message": "Ha ocurrido un problema"
+        }
+
+    finally:
+        return simplejson.dumps(response)
+
+@application.route('/usuarios/', methods=['POST'])
+def create_user():
+
+    import models
+    response = None
+
+    try:
+        
+        data_new_user = {
+            "usuario_cedula_pkey": request.json['cedula'],
+            "nombre": request.json['nombre'],
+            "apellido_paterno": request.json['apellido_paterno'],
+            "apellido_materno": request.json['apellido_materno'],
+            "correo": request.json['correo'],
+            "telefono": request.json['telefono'],
+            "contraseña": request.json['contrasena'],
+            "estado": int(request.json['estado']),
+            "tipo_de_usuario_foreign": int(request.json['tipo_de_usuario'])
+        }
+        
+        new_user = models.Users(**data_new_user)
+
+        db.session.add(new_user)
+        db.session.commit()
+
+        response = {"message": "Usuario creado"}
+    except Exception as error:
+        print(error)
+        response = {"message": "Ha ocurrido un problema"}
+
+    finally:
+        return jsonify(response)
 
 @application.route('/usuarios/<dni>', methods=['PUT'])
 def update_user(dni):
@@ -144,42 +224,240 @@ def update_user(dni):
     response = None
 
     try:
-        user = models.Users.query.filter_by(usuario_cedula_pkey=dni).first()
+        user = db.session.query(models.Users).get(dni)
         if user:
+            
             user.nombre = request.json['nombre']
-            response = schemas.user_schema.dump(user)
-            db.session.commit()
-        
-        else:
-            response = {"Message": "No se ha encontrado ningun usuario"}
-    except:
-        response = {"Message": "Ha ocurrido un problema"}
+            user.apellido_paterno = request.json['apellido_paterno']
+            user.apellido_materno = request.json['apellido_materno']
+            user.correo = request.json['correo']
+            user.telefono = request.json['telefono']
+            user.contraseña = request.json['contrasena']
+            user.estado = int(request.json['estado'])
 
+            db.session.add(user)
+            db.session.commit()
+
+            response = {
+                "message": "Usuario actualizado"
+            }
+        else:
+            response = {
+                "message": "No se ha encontrado ningun usuario"
+            }
+    except:
+        response = {
+            "message": "Ha ocurrido un problema"
+        }
     finally:
         return jsonify(response)
+
+@application.route('/usuarios/<dni>', methods=['DELETE'])
+def delete_user(dni):
+
+    import models
+    response = None
+
+    try:
+        user = db.session.query(models.Users).get(dni)
+        if user:
+
+            db.session.delete(user)
+            db.session.commit()
+
+            response = {
+                "message": "Usuario eliminado"
+            }
+        else:
+            response = {
+                "message": "Usuario no encontrado"
+            }
+    except: 
+        response = {
+            "message": "Ha ocurrido un problema"
+        }
+            
+    finally:
+        return jsonify(response)
+
+#direcciones 
 
 @application.route('/direcciones/')
 def get_directions():
 
     import schemas
     import models
+    response = None
 
-    all_directions = models.Directions.query.all()
-    schema_all_directions = schemas.directions_schema.dump(all_directions)
+    try:
+        all_directions = models.Directions.query.all()
+        
+        if all_directions:
+            response = schemas.directions_schema.dump(all_directions)
+        else:
+            response = {"message": "No hay direcciones"}
+    except:
+        response = {"message": "Ha ocurrido un problema"}
+    finally:
+        return jsonify(response)
 
-    return jsonify(schema_all_directions)
+@application.route('/direcciones/<id>')
+def get_direction(id):
 
+    import schemas 
+    import models
+    response = None
+
+    try:
+        direction = db.session.query(models.Directions).get(id)
+
+        if direction:
+            schema_direction = schemas.direction_schema.dump(direction)
+            response = schema_direction
+        else:
+            response = {"message": "No se ha encontrado direccion"}
+    except: 
+        response = {"message": "Ha ocurrido un problema"}
+
+    finally:
+        return jsonify(response)
+
+@application.route('/direcciones/', methods=['POST'])
+def create_direction():
+    
+    import models
+    
+    response = None
+    
+    try:
+        data_direction = {
+            "ciudad": request.json['ciudad'],
+            "barrio": request.json['barrio'],
+            "direccion": request.json['direccion']
+        }
+  
+        new_direction = models.Directions(**data_direction)
+        
+        db.session.add(new_direction)
+        db.session.commit()
+        
+        response = {
+            "message": "Direccion registrada"
+        }
+        
+    except Exception as error:
+        print(error)
+        response = {
+            "message": "Ha ocurrido un problema en el registro"
+        }
+    finally:
+        return jsonify(response)
+    
+@application.route('/direcciones/<id>', methods=['PUT'])
+def update_direction(id): 
+    
+    import models
+    response = None
+    
+    direction_data = {
+        "ciudad": request.json['ciudad'],
+        "barrio": request.json['barrio'],
+        "direccion": request.json['direccion']
+    }
+    
+    try:
+        direction = db.session.query(models.Directions).get(id)
+        
+        if direction:
+            
+            direction.ciudad = direction_data['ciudad']
+            direction.barrio = direction_data['barrio']
+            direction.direccion = direction_data['direccion']
+            
+            db.session.add(direction)
+            db.session.commit()
+            
+            response = {
+                "message": "direccion actualizada"
+            }
+        else:
+            response = {
+                "message": "No se ha encontrado direccion"
+            }
+    except Exception as error:
+        
+        print(error)
+       
+        response = {
+            "message": "Ha ocurrido un problema"
+        }
+        
+    finally:
+        return jsonify(response)
+    
+    
+#egresos
+    
 @application.route('/egresos/')
 def get_expenses():
-
-    import schemas
+    
     import models
+    import schemas
+    
+    response = None
+    
+    try:
+        expenses = db.session.query(models.Expenses).all()
+    
+        if expenses:
+            
+            response = schemas.expenses_schema.dump(expenses)
+            
+        else:
+            response = {
+                "message": "No hay egresos"
+            }
+    except:
+        response = {
+            "message": "Ha ocurrido un problema"
+        }
+    finally:
+        return jsonify(response)
 
-    all_expenses = models.Expenses.query.all()
-    schema_all_expenses = schemas.expenses_schema.dump(all_expenses)
-
-    return jsonify(schema_all_expenses)
-
+@application.route('/egresos/', methods=['POST'])
+def create_expense():
+    
+    import models
+    response = None
+    
+    data_expense = {
+        "fecha_egreso": request.json['fecha_egreso'],
+        "material": request.json['material'],
+        "cantidad": request.json['cantidad'],
+        "proveedor": request.json['proveedor'],
+        "costo": request.json['costo'],
+        "peso": request.json['peso']
+    }
+    
+    try:
+        new_expense = models.Expenses(**data_expense)
+        db.session.add(new_expense)
+        db.session.commit()
+        
+        response = {
+            "message": "Se ha registrado el ingreso"
+        }
+        
+    except Exception as error:
+        print(error)
+        response = {
+            "message": "Ha ocurrido un problema"
+        }
+        
+    finally:
+        return jsonify(response)
+        
+  
 @application.route('/ingresos/')
 def get_incomes():
 

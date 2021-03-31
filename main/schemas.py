@@ -1,7 +1,19 @@
 from api import marshmallow
 
-class UserSchema(marshmallow.Schema):
 
+class TypeOfUsersSchema(marshmallow.Schema):
+
+    class Meta:
+        fields = (
+            'nombre_del_tipo',
+        )
+
+type_of_user_schema = TypeOfUsersSchema()
+type_of_users_schema = TypeOfUsersSchema(many=True)
+
+
+class UserSchema(marshmallow.Schema):
+    
     class Meta:
         fields = (
             'usuario_cedula_pkey',
@@ -10,22 +22,13 @@ class UserSchema(marshmallow.Schema):
             'apellido_materno',
             'correo',
             'telefono',
-            'estado'
-        )
-
-user_schema = UserSchema()
-users_schema = UserSchema(many=True)
-
-class TypeOfUsersSchema(marshmallow.Schema):
-
-    class Meta:
-        fields = (
-            'tipo_de_usuario_pkey',
+            'estado',
+            'tipo_de_usuario_foreign',
             'nombre_del_tipo'
         )
-
-type_of_user_schema = TypeOfUsersSchema()
-type_of_users_schema = TypeOfUsersSchema(many=True)
+        
+user_schema = UserSchema()
+users_schema = UserSchema(many=True)
 
 class ExpensesSchema(marshmallow.Schema):
 
