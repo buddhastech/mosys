@@ -6,7 +6,6 @@ import simplejson
 from config_files.database_flask_config import configDatabase
 
 application = Flask(__name__)
-application.json_encoder = MyJSONEncoder
 configDatabase(application)
 
 marshmallow = Marshmallow(application)
@@ -180,7 +179,7 @@ def get_user(dni):
         }
 
     finally:
-        return simplejson.dumps(response)
+        return jsonify(response)
 
 @application.route('/usuarios/', methods=['POST'])
 def create_user():
@@ -394,9 +393,8 @@ def update_direction(id):
         
     finally:
         return jsonify(response)
-    
-    
-#egresos
+        
+# egresos
     
 @application.route('/egresos/')
 def get_expenses():
@@ -411,7 +409,12 @@ def get_expenses():
     
         if expenses:
             
-            response = schemas.expenses_schema.dump(expenses)
+            expenses_schema = schemas.expenses_schema.dump(expenses)
+            
+            for expense in expenses_schema:
+                expense['peso'] = round(expense['peso'], 2)
+            
+            response = expense
             
         else:
             response = {
@@ -421,6 +424,7 @@ def get_expenses():
         response = {
             "message": "Ha ocurrido un problema"
         }
+        
     finally:
         return jsonify(response)
 
@@ -448,57 +452,205 @@ def create_expense():
             "message": "Se ha registrado el ingreso"
         }
         
-    except Exception as error:
-        print(error)
+    except:
         response = {
             "message": "Ha ocurrido un problema"
         }
         
     finally:
         return jsonify(response)
-        
-  
-@application.route('/ingresos/')
-def get_incomes():
 
-    import schemas
-    import models
-
-    all_incomes = models.Incomes.query.all()
-    schema_all_incomes = schemas.incomes_schema.dump(all_incomes)
-
-    return jsonify(schema_all_incomes)
-
-@application.route('/ingresos/<id>', methods=['PUT'])
+@application.route('/egresos/<id>', methods=['PUT'])
 def update_expense(id):
+    
+    import models
+    import schemas
+    
+    response = None
+    
+    try:
+        
+        egreso = db.session.query(models.Expenses).get(id)
+        
+        if egreso:
+            
+            data_expense_update = {
+                "fecha_egreso": request.json['fecha_egreso'],
+                "material": request.json['material'],
+                "cantidad": request.json['cantidad'],
+                "proveedor": request.json['proveedor'],
+                "costo": request.json['costo'],
+                "peso": request.json['peso']
+            } 
+        
+            egreso.fecha_egreso = data_expense_update['fecha_egreso']
+            egreso.material = data_expense_update['material']
+            egreso.cantidad = data_expense_update['cantidad']
+            egreso.proveedor = data_expense_update['proveedor']
+            egreso.costo = data_expense_update['costo']
+            egreso.peso = data_expense_update['peso']
+        
+            db.session.add(egreso)
+            db.session.commit()
+        
+            response = {
+                "message": "Datos actualizados"
+            }
+            
+        else:
+            response = {
+                "message": "No se ha encontrado egreso"
+            }
+    except:
+    
+        response = {
+            "message": "Ha ocurrido un problema"
+        }
+        
+    finally:
+        return jsonify(response)
 
+@application.route('/egresos/<id>', methods=['DELETE'])
+def delete_expense(id):
+    
+    import models
+    response = None
+    
+    try:
+        egreso = db.session.query(models.Expenses).get(id)
+        
+        if egreso:
+            
+            db.session.delete(egreso)
+            db.session.commit()
+            
+            response = {
+                "message": "Egreso eliminado"
+            }
+            
+        else:
+            response = {
+                "message": "Egreso no encontrado"
+            }
+    except:
+            response = {
+                "message": "Egreso eliminado"
+            }
+    finally:
+        return response
+
+# clientes
+
+@application.route('/clientes/', methods=['POST'])
+def create_client():
+    
     import models 
     import schemas
-
+    
+    response = None
+    
+    data_client = {
+        "nombre": request.json['nombre'],
+        "apellido": request.json['apellido'],
+        "telefono": request.json['telefono'],
+        "direccion_id_foreign": request.json['direccion_id']
+    }
+    
     try:
-        income = models.Incomes.query.filter_by(id_ingreso_pkey=id).first()
-        if income:
-
-            income.monto_ingreso = request.json['monto']
-            db.session.commit()
-            return jsonify(schemas.income_schema.dump(income))
-
-        else:
-            return jsonify({"message": "No se ha encontrado ingreso"})
-    except Exception as error:
-        print(error)
-        return jsonify({"message":"Ha ocurrido un problema"})
-
-@application.route('/clientes/')
-def get_clients():
+        
+        new_client = models.Clients(**data_client)
+        db.session.add(new_client)
+        db.session.commit()
+        
+        response = {
+            "message": "Cliente creado correctamente"
+        }
+    
+    except:
+        
+        response = {
+            "message": "Ha ocurrido un problema"
+        }
+    
+    finally:
+        
+        return jsonify(response)
+        
+@application.route('/clientes/<id>')
+def get_clients(id):
 
     import schemas
     import models
+    
+    response = None
 
-    all_clients = models.Clients.query.all()
-    schema_all_clients = schemas.clients_schema.dump(all_clients)
+    try:
+        client = db.session.query(models.Clients, models.Directions)\
+        .filter_by(cliente_id_pkey=id)\
+        .join(
+            models.Clients,
+            models.Clients.direccion_id_foreign==models.Directions.direccion_id_pkey
+        ).first()
 
-    return jsonify(schema_all_clients)
+        if client:
+            
+            response = schemas.clients_schema.dump(client)
+
+        else:
+            response = {
+                "message": "No hay clientes registrados"
+            }
+        
+    except Exception as error:
+        print(error)
+        response = {
+            "message": "Ha ocurrido un problema"
+        }
+    
+    finally:
+        return jsonify(response)
+
+@application.route('/clientes/<id>', methods=['PUT'])
+def update_client(id):
+
+    import models   
+    import schemas
+
+    response = None
+
+    try:
+        data_update = {
+            "nombre": request.json['nombre'],
+            "apellido": request.json['apellido'],
+            "telefono": request.json['telefono']
+        }
+
+        client = db.session.query(models.Clients).get(id)
+        
+        if client:
+            client.nombre = data_update['nombre']
+            client.apellido = data_update['apellido']
+            client.telefono = data_update['telefono']
+            db.session.add(client)
+            db.session.commit()
+
+            response = {
+                "message": "Cliente actualizado"
+            }
+            
+        else:
+            response = {
+                "message": "Cliente no encontrado"
+            }
+
+    except Exception as error:
+        print(error)
+        response = {
+            "message": "Ha ocurrido un problema"
+        }
+
+    finally:
+        return jsonify(response)
 
 @application.route('/pedidos/')
 def get_orders():

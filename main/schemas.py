@@ -23,7 +23,6 @@ class UserSchema(marshmallow.Schema):
             'correo',
             'telefono',
             'estado',
-            'tipo_de_usuario_foreign',
             'nombre_del_tipo'
         )
         
@@ -63,7 +62,10 @@ class ClientsSchema(marshmallow.Schema):
         fields = (
             'nombre',
             'apellido',
-            'telefono'
+            'telefono',
+            'ciudad',
+            'barrio',
+            'direccion'
         )
 
 client_schema = ClientsSchema()
